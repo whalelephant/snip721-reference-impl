@@ -59,6 +59,8 @@ pub const PREFIX_RECEIVERS: &[u8] = b"receivers";
 pub const PREFIX_MINT_RUN_NUM: &[u8] = b"runnum";
 /// prefix for the storage of revoked permits
 pub const PREFIX_REVOKED_PERMITS: &str = "revoke";
+/// prefix for the storage of collaterals
+pub const PREFIX_COLLATERAL: &str = "collateral";
 
 /// Token contract config
 #[derive(Serialize, Debug, Deserialize, Clone, PartialEq)]
@@ -519,7 +521,7 @@ pub fn json_save<T: Serialize, S: Storage>(
 }
 
 /// Returns StdResult<T> from retrieving the item with the specified key using Json
-/// (de)serialization because bincode2 annoyingly uses a float op when deserializing an enum.  
+/// (de)serialization because bincode2 annoyingly uses a float op when deserializing an enum.
 /// Returns a StdError::NotFound if there is no item with that key
 ///
 /// # Arguments

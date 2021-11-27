@@ -15,6 +15,21 @@ pub struct Token {
     /// true if this token has been unwrapped.  If sealed metadata is not enabled, all
     /// tokens are considered unwrapped
     pub unwrapped: bool,
+    /// true if this token has been collateralised, if so then no operation can be performed
+    /// apart from UnCollateralise
+    pub collateralised: bool,
+}
+
+/// CollateralInfo
+#[derive(Serialize, Deserialize, JsonSchema, Clone, PartialEq, Debug, Default)]
+pub struct CollateralInfo {
+    /// give permission for this address to put up for collateral
+    pub address: HumanAddr,
+    /// price willing to accept collateral at
+    pub price: Coin,
+    /// expiration is the time after which the collateral can be redeemed by the holder
+    /// of the collateral
+    pub expiration: Expiration,
 }
 
 /// token metadata

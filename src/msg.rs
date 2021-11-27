@@ -393,10 +393,25 @@ pub enum HandleMsg {
         /// optional message length padding
         padding: Option<String>,
     },
-    Collaterlise {
-        /// DAO address
+    /// allows the ownership to be transfered to the given address
+    /// iff the min price is sent to the contract, which is fowarded to the owner
+    InitCollateral {
+        token_id: String,
+        /// give permission for this address to put up for collateral
         address: HumanAddr,
+        /// price willing to accept collateral at
+        price: Coin,
+        /// expiration is the time after which the collateral can be redeemed by the holder
+        /// of the collateral
+        expiration: Expiration,
     },
+    /// accepting collateral by a sender previously approved by the owner
+    /// must send in funds
+    Collaterlise { token_id: String },
+    /// sender must be either owner or collateral holder
+    /// if it is the owner, amount borrowed my be repaied
+    /// if it is the collateral holder, it must have expired
+    UnCollateralise { token_id: String },
 }
 
 /// permission access level
@@ -561,6 +576,15 @@ pub enum HandleAnswer {
         status: ResponseStatus,
     },
     RevokePermit {
+        status: ResponseStatus,
+    },
+    InitCollateral {
+        status: ResponseStatus,
+    },
+    Collateralise {
+        status: ResponseStatus,
+    },
+    UnCollateralise {
         status: ResponseStatus,
     },
 }

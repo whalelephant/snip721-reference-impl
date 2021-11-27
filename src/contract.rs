@@ -1,7 +1,5 @@
-use cosmwasm_std::{
-    log, to_binary, Api, Binary, BlockInfo, CanonicalAddr, CosmosMsg, Env, Extern, HandleResponse,
-    HandleResult, HumanAddr, InitResponse, InitResult, Querier, QueryResult, ReadonlyStorage,
-    StdError, StdResult, Storage, WasmMsg,
+    HandleResponse, HandleResult, HumanAddr, InitResponse, InitResult, Querier, QueryResult,
+    ReadonlyStorage, StdError, StdResult, Storage, WasmMsg,
 };
 use cosmwasm_storage::{PrefixedStorage, ReadonlyPrefixedStorage};
 use primitive_types::U256;
@@ -14,7 +12,7 @@ use secret_toolkit::{
     utils::{pad_handle_result, pad_query_result},
 };
 
-use crate::expiration::Expiration;
+use crate::{expiration::Expiration, state::PREFIX_COLLATERAL, token::CollateralInfo};
 use crate::inventory::{Inventory, InventoryIter};
 use crate::mint_run::{SerialNumber, StoredMintRunInfo};
 use crate::msg::{
@@ -442,9 +440,79 @@ pub fn handle<S: Storage, A: Api, Q: Querier>(
         HandleMsg::RevokePermit { permit_name, .. } => {
             revoke_permit(&mut deps.storage, &env.message.sender, &permit_name)
         }
-        HandleMsg::Collaterlise { .. } => unimplemented!(),
+        HandleMsg::InitCollateral {
+            token_id,
+            address,
+            price,
+            expiration,
+        } => initialise_collateral(
+            deps,
+            env,
+            &mut config,
+            ContractStatus::Normal.to_u8(),
+            token_id,
+            address,
+            price,
+            expiration,
+        ),
+        HandleMsg::Collaterlise { token_id } => unimplemented!(),
+        HandleMsg::UnCollateralise { token_id } => unimplemented!(),
     };
     pad_handle_result(response, BLOCK_SIZE)
+}
+
+/// Returns HandleResult
+///
+/// initialise a collateral transaction
+pub fn initialise_collateral<S: Storage, A: Api, Q: Querier>(
+    deps: &mut Extern<S, A, Q>,
+    env: Env,
+    config: &mut Config,
+    priority: u8,
+    token_id: String,
+    address: HumanAddr,
+    price: Coin,
+    expiration: Expiration,
+) -> HandleResult {
+    check_status(config.status, priority)?;
+    let custom_err = format!("Not authorized to collateralise token {}", token_id);
+    // if token supply is private, don't leak that the token id does not exist
+    // instead just say they are not authorized for that token
+    let opt_err = if config.token_supply_is_public {
+        None
+    } else {
+        Some(&*custom_err)
+    };
+    let (token, idx) = get_token(&deps.storage, &token_id, opt_err)?;
+    let sender_raw = deps.api.canonical_address(&env.message.sender)?;
+    if !(token.owner == sender_raw) {
+        return Err(StdError::generic_err(custom_err));
+    }
+
+    // update the token itself
+    let (mut token, idx) = get_token(&deps.storage, token_id, opt_err)?;
+    if token.owner != sender_raw {
+        return Err(StdError::generic_err(custom_err));
+    }
+    token.collateralise= true;
+    let token_key = idx.to_le_bytes();
+    let mut info_store = PrefixedStorage::new(PREFIX_INFOS, &mut deps.storage);
+    json_save(&mut info_store, &token_key, &token)?;
+
+    // store in collateral store
+    let mut collateral_store = PrefixedStorage::new(PREFIX_COLLATERAL, storage);
+    let collateral_info = CollateralInfo {
+        address, price, expiration
+    };
+    save(&mut collateral_store, &idx.to_le_bytes(), collateral_info)?;
+
+    Ok(HandleResponse {
+        messages: vec![],
+        log: vec![],
+        data: Some(to_binary(&HandleAnswer::InitCollateral {
+            status: Success,
+        })?),
+    })
 }
 
 /// Returns HandleResult
@@ -1018,6 +1086,7 @@ pub fn set_global_approval<S: Storage, A: Api, Q: Querier>(
                 owner: sender_raw.clone(),
                 permissions: Vec::new(),
                 unwrapped: false,
+                collateralised: false,
             },
             0,
         )
@@ -1108,6 +1177,7 @@ pub fn set_whitelisted_approval<S: Storage, A: Api, Q: Querier>(
                 owner: sender_raw.clone(),
                 permissions: Vec::new(),
                 unwrapped: false,
+                collateralised: false,
             },
             0,
         )
@@ -3629,6 +3699,7 @@ fn process_accesses<S: Storage>(
 ) -> StdResult<()> {
     let owner_slice = owner.as_slice();
     let expiration = proc_info.expires.unwrap_or_default();
+
     let expirations = vec![expiration; 3];
     let mut alt_all_perm = AlterPermTable::default();
     let mut alt_tok_perm = AlterPermTable::default();
@@ -4482,6 +4553,7 @@ fn mint_list<S: Storage, A: Api, Q: Querier>(
             owner: recipient.clone(),
             permissions: Vec::new(),
             unwrapped: !config.sealed_metadata_is_enabled,
+            collateralised: false,
         };
 
         // save new token info
