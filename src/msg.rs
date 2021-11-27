@@ -393,6 +393,10 @@ pub enum HandleMsg {
         /// optional message length padding
         padding: Option<String>,
     },
+    Collaterlise {
+        /// DAO address
+        address: HumanAddr,
+    },
 }
 
 /// permission access level

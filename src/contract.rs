@@ -442,6 +442,7 @@ pub fn handle<S: Storage, A: Api, Q: Querier>(
         HandleMsg::RevokePermit { permit_name, .. } => {
             revoke_permit(&mut deps.storage, &env.message.sender, &permit_name)
         }
+        HandleMsg::Collaterlise { .. } => unimplemented!(),
     };
     pad_handle_result(response, BLOCK_SIZE)
 }
