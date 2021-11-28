@@ -1,3 +1,5 @@
+use cosmwasm_std::{
+    log, to_binary, Api, BankMsg, Binary, BlockInfo, CanonicalAddr, Coin, CosmosMsg, Env, Extern,
     HandleResponse, HandleResult, HumanAddr, InitResponse, InitResult, Querier, QueryResult,
     ReadonlyStorage, StdError, StdResult, Storage, WasmMsg,
 };
@@ -12,7 +14,7 @@ use secret_toolkit::{
     utils::{pad_handle_result, pad_query_result},
 };
 
-use crate::{expiration::Expiration, state::PREFIX_COLLATERAL, token::CollateralInfo};
+use crate::expiration::Expiration;
 use crate::inventory::{Inventory, InventoryIter};
 use crate::mint_run::{SerialNumber, StoredMintRunInfo};
 use crate::msg::{
@@ -27,11 +29,12 @@ use crate::state::{
     get_txs, json_may_load, json_save, load, may_load, remove, save, store_burn, store_mint,
     store_transfer, AuthList, Config, Permission, PermissionType, ReceiveRegistration, BLOCK_KEY,
     CONFIG_KEY, CREATOR_KEY, DEFAULT_ROYALTY_KEY, MINTERS_KEY, MY_ADDRESS_KEY,
-    PREFIX_ALL_PERMISSIONS, PREFIX_AUTHLIST, PREFIX_INFOS, PREFIX_MAP_TO_ID, PREFIX_MAP_TO_INDEX,
-    PREFIX_MINT_RUN, PREFIX_MINT_RUN_NUM, PREFIX_OWNER_PRIV, PREFIX_PRIV_META, PREFIX_PUB_META,
-    PREFIX_RECEIVERS, PREFIX_REVOKED_PERMITS, PREFIX_ROYALTY_INFO, PREFIX_VIEW_KEY, PRNG_SEED_KEY,
+    PREFIX_ALL_PERMISSIONS, PREFIX_AUTHLIST, PREFIX_COLLATERAL, PREFIX_INFOS, PREFIX_MAP_TO_ID,
+    PREFIX_MAP_TO_INDEX, PREFIX_MINT_RUN, PREFIX_MINT_RUN_NUM, PREFIX_OWNER_PRIV, PREFIX_PRIV_META,
+    PREFIX_PUB_META, PREFIX_RECEIVERS, PREFIX_REVOKED_PERMITS, PREFIX_ROYALTY_INFO,
+    PREFIX_UNFILLED_COLLATERAL, PREFIX_VIEW_KEY, PRNG_SEED_KEY,
 };
-use crate::token::{Metadata, Token};
+use crate::token::{CollateralInfo, Metadata, Token};
 use crate::viewing_key::{ViewingKey, VIEWING_KEY_SIZE};
 
 /// pad handle responses and log attributes to blocks of 256 bytes to prevent leaking info based on
@@ -442,8 +445,8 @@ pub fn handle<S: Storage, A: Api, Q: Querier>(
         }
         HandleMsg::InitCollateral {
             token_id,
-            address,
             price,
+            repayment,
             expiration,
         } => initialise_collateral(
             deps,
@@ -451,12 +454,24 @@ pub fn handle<S: Storage, A: Api, Q: Querier>(
             &mut config,
             ContractStatus::Normal.to_u8(),
             token_id,
-            address,
             price,
+            repayment,
             expiration,
         ),
-        HandleMsg::Collaterlise { token_id } => unimplemented!(),
-        HandleMsg::UnCollateralise { token_id } => unimplemented!(),
+        HandleMsg::Collaterlise { token_id } => collateralise(
+            deps,
+            env,
+            &mut config,
+            ContractStatus::Normal.to_u8(),
+            token_id,
+        ),
+        HandleMsg::UnCollateralise { token_id } => uncollateralise(
+            deps,
+            env,
+            &mut config,
+            ContractStatus::Normal.to_u8(),
+            token_id,
+        ),
     };
     pad_handle_result(response, BLOCK_SIZE)
 }
@@ -470,8 +485,8 @@ pub fn initialise_collateral<S: Storage, A: Api, Q: Querier>(
     config: &mut Config,
     priority: u8,
     token_id: String,
-    address: HumanAddr,
     price: Coin,
+    repayment: Coin,
     expiration: Expiration,
 ) -> HandleResult {
     check_status(config.status, priority)?;
@@ -489,22 +504,25 @@ pub fn initialise_collateral<S: Storage, A: Api, Q: Querier>(
         return Err(StdError::generic_err(custom_err));
     }
 
-    // update the token itself
-    let (mut token, idx) = get_token(&deps.storage, token_id, opt_err)?;
+    // make sure caller is the token owner
     if token.owner != sender_raw {
         return Err(StdError::generic_err(custom_err));
     }
-    token.collateralise= true;
-    let token_key = idx.to_le_bytes();
-    let mut info_store = PrefixedStorage::new(PREFIX_INFOS, &mut deps.storage);
-    json_save(&mut info_store, &token_key, &token)?;
+
+    // check the token collateralise status
+    if token.collateralised {
+        return Err(StdError::generic_err(custom_err));
+    }
 
     // store in collateral store
-    let mut collateral_store = PrefixedStorage::new(PREFIX_COLLATERAL, storage);
+    let mut collateral_store = PrefixedStorage::new(PREFIX_UNFILLED_COLLATERAL, &mut deps.storage);
     let collateral_info = CollateralInfo {
-        address, price, expiration
+        price,
+        repayment,
+        expiration,
+        holder: None,
     };
-    save(&mut collateral_store, &idx.to_le_bytes(), collateral_info)?;
+    json_save(&mut collateral_store, &idx.to_le_bytes(), &collateral_info)?;
 
     Ok(HandleResponse {
         messages: vec![],
@@ -515,6 +533,114 @@ pub fn initialise_collateral<S: Storage, A: Api, Q: Querier>(
     })
 }
 
+/// Returns HandleResult
+///
+/// collateralise a token after owner has set conditions
+///
+pub fn collateralise<S: Storage, A: Api, Q: Querier>(
+    deps: &mut Extern<S, A, Q>,
+    env: Env,
+    config: &mut Config,
+    priority: u8,
+    token_id: String,
+) -> HandleResult {
+    check_status(config.status, priority)?;
+
+    let custom_err = format!("Not authorized to collateralise token {}", token_id);
+    // if token supply is private, don't leak that the token id does not exist
+    // instead just say they are not authorized for that token
+    let opt_err = if config.token_supply_is_public {
+        None
+    } else {
+        Some(&*custom_err)
+    };
+
+    let sender_raw = deps.api.canonical_address(&env.message.sender)?;
+
+    let (token_owner, funds) = fill_collateral(
+        &mut deps.storage,
+        sender_raw,
+        env.message.sent_funds,
+        &token_id,
+        opt_err,
+    )?;
+
+    Ok(HandleResponse {
+        messages: vec![CosmosMsg::Bank(BankMsg::Send {
+            from_address: env.message.sender,
+            to_address: deps.api.human_address(&token_owner)?,
+            amount: vec![funds],
+        })],
+        log: vec![],
+        data: Some(to_binary(&HandleAnswer::Collateralised {
+            status: Success,
+        })?),
+    })
+}
+
+pub fn uncollateralise<S: Storage, A: Api, Q: Querier>(
+    deps: &mut Extern<S, A, Q>,
+    env: Env,
+    config: &mut Config,
+    priority: u8,
+    token_id: String,
+) -> HandleResult {
+    let custom_err = format!("Not authorized to uncollateralise token {}", token_id);
+    // if token supply is private, don't leak that the token id does not exist
+    // instead just say they are not authorized for that token
+    let opt_err = if config.token_supply_is_public {
+        None
+    } else {
+        Some(&*custom_err)
+    };
+
+    let sender_raw = deps.api.canonical_address(&env.message.sender)?;
+    let (mut token, idx) = get_token(&deps.storage, &token_id, opt_err)?;
+
+    if !token.collateralised {
+        return Err(StdError::generic_err(custom_err));
+    }
+
+    // check caller is token owner and sent funds
+    let mut collateral_store = PrefixedStorage::new(PREFIX_COLLATERAL, &mut deps.storage);
+    let token_key = idx.to_le_bytes();
+    let mut collateral_info: CollateralInfo = json_may_load(&collateral_store, &token_key)?
+        .ok_or_else(|| {
+            StdError::generic_err(format!("Unable to find collateral info for {}", token_id))
+        })?;
+
+    // maybe just the handlerResponse
+    let mut msg: CosmosMsg;
+
+    // lender must have already been set by fill_collateral
+    if let Some(lender) = collateral_info.holder {
+        // sender is the token owner repaying for NFT
+        if (token.owner == sender_raw)
+            && env.message.sent_funds.contains(&collateral_info.repayment)
+        {
+            msg = CosmosMsg::Bank(BankMsg::Send {
+                from_address: env.message.sender,
+                to_address: deps.api.human_address(&lender)?,
+                amount: vec![collateral_info.repayment],
+            });
+
+            token.collateralised = false;
+            remove(&mut collateral_store, &token_key);
+        } else if (lender == sender_raw) && (collateral_info.expiration.is_expired(&env.block)) {
+            // transfer token to lender
+        }
+    } else {
+        return Err(StdError::generic_err(custom_err));
+    }
+
+    Ok(HandleResponse {
+        messages: vec![],
+        log: vec![],
+        data: Some(to_binary(&HandleAnswer::Collateralised {
+            status: Success,
+        })?),
+    })
+}
 /// Returns HandleResult
 ///
 /// mint a new token
@@ -3527,6 +3653,52 @@ fn get_token_if_permitted<S: Storage, A: Api, Q: Querier>(
         config.owner_is_public,
     )?;
     Ok((token, idx))
+}
+
+/// Returns StdResult<(Token, u32)>
+///
+/// returns the specified token's unfilled collatera setting  set by the user
+///
+/// # Arguments
+///
+/// * `storage` - a reference to contract's storage
+/// * `token_id` - token id string slice
+/// * `custom_err` - optional custom error message to use if don't want to reveal that a token
+///                  does not exist
+fn fill_collateral<S: Storage>(
+    storage: &mut S,
+    holder: CanonicalAddr,
+    funds: Vec<Coin>,
+    token_id: &str,
+    custom_err: Option<&str>,
+) -> StdResult<(CanonicalAddr, Coin)> {
+    let (mut token, idx) = get_token(storage, token_id, custom_err)?;
+
+    // check that token_id has unfilled collateral
+    let mut unfilled_collateral_store = PrefixedStorage::new(PREFIX_UNFILLED_COLLATERAL, storage);
+    let token_key = idx.to_le_bytes();
+    let mut collateral_info: CollateralInfo =
+        json_may_load(&unfilled_collateral_store, &token_key)?.ok_or_else(|| {
+            StdError::generic_err(format!("Unable to find collateral info for {}", token_id))
+        })?;
+    // make sure sender sent funds
+    if !funds.contains(&collateral_info.price) {
+        return Err(StdError::generic_err("Fund does not match specified"));
+    }
+    // remove from further usage
+    remove(&mut unfilled_collateral_store, &token_key);
+
+    // lock token from certain operations, burn, transfer, approval etc.
+    token.collateralised = true;
+    let mut info_store = PrefixedStorage::new(PREFIX_INFOS, storage);
+    json_save(&mut info_store, &token_key, &token)?;
+
+    // store filled collateral
+    collateral_info.holder = Some(holder);
+    let mut collateral_store = PrefixedStorage::new(PREFIX_COLLATERAL, storage);
+    json_save(&mut collateral_store, &token_key, &collateral_info)?;
+
+    Ok((token.owner, collateral_info.price))
 }
 
 /// Returns StdResult<(Token, u32)>

@@ -397,16 +397,15 @@ pub enum HandleMsg {
     /// iff the min price is sent to the contract, which is fowarded to the owner
     InitCollateral {
         token_id: String,
-        /// give permission for this address to put up for collateral
-        address: HumanAddr,
         /// price willing to accept collateral at
         price: Coin,
+        /// price willing to repay collateral at
+        repayment: Coin,
         /// expiration is the time after which the collateral can be redeemed by the holder
         /// of the collateral
         expiration: Expiration,
     },
-    /// accepting collateral by a sender previously approved by the owner
-    /// must send in funds
+    /// accepting collateral if sufficient funds have been sent
     Collaterlise { token_id: String },
     /// sender must be either owner or collateral holder
     /// if it is the owner, amount borrowed my be repaied
@@ -581,7 +580,7 @@ pub enum HandleAnswer {
     InitCollateral {
         status: ResponseStatus,
     },
-    Collateralise {
+    Collateralised {
         status: ResponseStatus,
     },
     UnCollateralise {

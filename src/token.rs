@@ -1,8 +1,9 @@
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
-use cosmwasm_std::CanonicalAddr;
+use cosmwasm_std::{CanonicalAddr, Coin};
 
+use crate::expiration::Expiration;
 use crate::state::Permission;
 
 /// token
@@ -23,13 +24,15 @@ pub struct Token {
 /// CollateralInfo
 #[derive(Serialize, Deserialize, JsonSchema, Clone, PartialEq, Debug, Default)]
 pub struct CollateralInfo {
-    /// give permission for this address to put up for collateral
-    pub address: HumanAddr,
     /// price willing to accept collateral at
     pub price: Coin,
+    /// price willing to relay at
+    pub repayment: Coin,
     /// expiration is the time after which the collateral can be redeemed by the holder
     /// of the collateral
     pub expiration: Expiration,
+    /// collateral holder
+    pub holder: Option<CanonicalAddr>,
 }
 
 /// token metadata

@@ -59,8 +59,10 @@ pub const PREFIX_RECEIVERS: &[u8] = b"receivers";
 pub const PREFIX_MINT_RUN_NUM: &[u8] = b"runnum";
 /// prefix for the storage of revoked permits
 pub const PREFIX_REVOKED_PERMITS: &str = "revoke";
+/// prefix for the storage of unfilled collaterals
+pub const PREFIX_UNFILLED_COLLATERAL: &[u8] = b"unfilled_collateral";
 /// prefix for the storage of collaterals
-pub const PREFIX_COLLATERAL: &str = "collateral";
+pub const PREFIX_COLLATERAL: &[u8] = b"collateral";
 
 /// Token contract config
 #[derive(Serialize, Debug, Deserialize, Clone, PartialEq)]
