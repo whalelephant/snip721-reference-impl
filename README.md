@@ -8,6 +8,64 @@ Added features:
 - Specific Poker Joker Game metadata
 - on chain randomness generation of some metadata
 
+## Metadata
+
+Mint/ batch mint / mint_clones all use mint_list
+
+```rust
+/// token metadata
+#[derive(Serialize, Deserialize, JsonSchema, Clone, PartialEq, Debug, Default)]
+pub struct Metadata {
+    /// optional uri for off-chain metadata.  This should be prefixed with `http://`, `https://`, `ipfs://`, or
+    /// `ar://`.  Only use this if you are not using `extension`
+    pub token_uri: Option<String>,
+    /// optional on-chain metadata.  Only use this if you are not using `token_uri`
+    pub extension: Option<Extension>,
+}
+
+#[derive(Serialize, Deserialize, JsonSchema, Clone, PartialEq, Debug, Default)]
+pub struct Extension {
+    /// url to the image
+    pub image: Option<String>,
+    /// raw SVG image data (not recommended). Only use this if you're not including the image parameter
+    pub image_data: Option<String>,
+    /// url to allow users to view the item on your site
+    pub external_url: Option<String>,
+    /// item description
+    pub description: Option<String>,
+    /// name of the item
+    pub name: Option<String>,
+    /// item attributes
+    pub attributes: Option<Vec<Trait>>,
+    /// background color represented as a six-character hexadecimal without a pre-pended #
+    pub background_color: Option<String>,
+    /// url to a multimedia attachment
+    pub animation_url: Option<String>,
+    /// url to a YouTube video
+    pub youtube_url: Option<String>,
+    /// media files as specified on Stashh that allows for basic authenticatiion and decryption keys.
+    /// Most of the above is used for bridging public eth NFT metadata easily, whereas `media` will be used
+    /// when minting NFTs on Stashh
+    pub media: Option<Vec<MediaFile>>,
+    /// a select list of trait_types that are in the private metadata.  This will only ever be used
+    /// in public metadata
+    pub protected_attributes: Option<Vec<String>>,
+}
+
+/// attribute trait
+#[derive(Serialize, Deserialize, JsonSchema, Clone, PartialEq, Debug, Default)]
+pub struct Trait {
+    /// indicates how a trait should be displayed
+    pub display_type: Option<String>,
+    /// name of the trait
+    pub trait_type: Option<String>,
+    /// trait value
+    pub value: String,
+    /// optional max value for numerical traits
+    pub max_value: Option<String>,
+}
+```
+
 ## Collateralisation:
 
 Token Owner can initiate a collateralisation of their NFT for a given period by setting the price and the expiration.
@@ -23,9 +81,6 @@ During the time of collateral, it is not possible to
 - transfer
 - send
 - burn
-- setMetadata
-- setGlobalApproval
-- setWhitelistedApproval
 
 ---
 
@@ -2717,4 +2772,3 @@ BatchReceiveNft may be a HandleMsg variant of any contract that wants to impleme
 | from      | string (HumanAddr)             | Address of the tokens' previous owner (this field is equivalent to the ReceiveNft `sender` field, [see above](#cwsender)) | no       |                  |
 | token_ids | array of string                | List of the tokens sent                                                                                                   | no       |                  |
 | msg       | string (base64 encoded Binary) | Msg used to control receiving logic                                                                                       | yes      | nothing          |
-

@@ -585,6 +585,7 @@ pub fn uncollateralise<S: Storage, A: Api, Q: Querier>(
     priority: u8,
     token_id: String,
 ) -> HandleResult {
+    check_status(config.status, priority)?;
     let custom_err = format!("Not authorized to uncollateralise token {}", token_id);
     // if token supply is private, don't leak that the token id does not exist
     // instead just say they are not authorized for that token
@@ -601,42 +602,47 @@ pub fn uncollateralise<S: Storage, A: Api, Q: Querier>(
         return Err(StdError::generic_err(custom_err));
     }
 
-    // check caller is token owner and sent funds
     let mut collateral_store = PrefixedStorage::new(PREFIX_COLLATERAL, &mut deps.storage);
     let token_key = idx.to_le_bytes();
-    let mut collateral_info: CollateralInfo = json_may_load(&collateral_store, &token_key)?
+    let collateral_info: CollateralInfo = json_may_load(&collateral_store, &token_key)?
         .ok_or_else(|| {
             StdError::generic_err(format!("Unable to find collateral info for {}", token_id))
         })?;
 
     // maybe just the handlerResponse
-    let mut msg: CosmosMsg;
+    let mut msg: Vec<CosmosMsg> = vec![];
+    // if the token is collateralised, it must have a lender
+    let lender = collateral_info.holder.unwrap();
 
-    // lender must have already been set by fill_collateral
-    if let Some(lender) = collateral_info.holder {
-        // sender is the token owner repaying for NFT
-        if (token.owner == sender_raw)
-            && env.message.sent_funds.contains(&collateral_info.repayment)
-        {
-            msg = CosmosMsg::Bank(BankMsg::Send {
-                from_address: env.message.sender,
-                to_address: deps.api.human_address(&lender)?,
-                amount: vec![collateral_info.repayment],
-            });
-
-            token.collateralised = false;
-            remove(&mut collateral_store, &token_key);
-        } else if (lender == sender_raw) && (collateral_info.expiration.is_expired(&env.block)) {
-            // transfer token to lender
-        }
+    // check caller is token owner and sent funds
+    if token.owner == sender_raw
+        && env.message.sent_funds.contains(&collateral_info.repayment)
+        && !collateral_info.expiration.is_expired(&env.block)
+    {
+        token.collateralised = false;
+        remove(&mut collateral_store, &token_key);
+        msg = vec![CosmosMsg::Bank(BankMsg::Send {
+            from_address: env.contract.address,
+            to_address: deps.api.human_address(&lender)?,
+            amount: vec![collateral_info.repayment],
+        })];
+    } else if collateral_info.expiration.is_expired(&env.block) {
+        token.collateralised = false;
+        remove(&mut collateral_store, &token_key);
+        let transfers = Some(vec![Transfer {
+            recipient: deps.api.human_address(&lender)?,
+            token_ids: vec![token_id],
+            memo: None,
+        }]);
+        let _m = send_list(deps, &env, config, &sender_raw, transfers, None)?;
     } else {
         return Err(StdError::generic_err(custom_err));
     }
 
     Ok(HandleResponse {
-        messages: vec![],
+        messages: msg,
         log: vec![],
-        data: Some(to_binary(&HandleAnswer::Collateralised {
+        data: Some(to_binary(&HandleAnswer::Uncollateralised {
             status: Success,
         })?),
     })
@@ -4425,6 +4431,11 @@ fn transfer_impl<S: Storage, A: Api, Q: Querier>(
         oper_for,
         config,
     )?;
+    // token is collateralised no sending is allowed
+    if token.collateralised {
+        return Err(StdError::generic_err("Token is collateralised"));
+    }
+
     let old_owner = token.owner;
     // throw error if ownership would not change
     if old_owner == recipient {
@@ -4613,6 +4624,10 @@ fn burn_list<S: Storage, A: Api, Q: Querier>(
                 &mut oper_for,
                 config,
             )?;
+            // token is collateralised no sending is allowed
+            if token.collateralised {
+                return Err(StdError::generic_err("Token is collateralised"));
+            }
             // log the inventory change
             let inv_upd = if let Some(inv) = inv_updates
                 .iter_mut()
