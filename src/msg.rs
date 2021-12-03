@@ -102,6 +102,11 @@ pub struct PostInitCallback {
 #[derive(Serialize, Deserialize, JsonSchema)]
 #[serde(rename_all = "snake_case")]
 pub enum HandleMsg {
+    MintDiceNft {
+        owner: Option<HumanAddr>,
+        /// optional public metadata that can be seen by everyone
+        private_metadata: Option<Metadata>,
+    },
     /// mint new token
     MintNft {
         /// optional token id. if omitted, use current token index
@@ -410,7 +415,7 @@ pub enum HandleMsg {
     /// sender must be either owner or collateral holder
     /// if it is the owner, amount borrowed my be repaied
     /// if it is the collateral holder, it must have expired
-    UnCollateralise { token_id: String },
+    Uncollateralise { token_id: String },
 }
 
 /// permission access level
@@ -583,7 +588,7 @@ pub enum HandleAnswer {
     Collateralised {
         status: ResponseStatus,
     },
-    UnCollateralise {
+    Uncollateralised {
         status: ResponseStatus,
     },
 }

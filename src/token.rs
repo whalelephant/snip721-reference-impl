@@ -1,3 +1,5 @@
+use hex::ToHex;
+use rand::Rng;
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
@@ -50,7 +52,7 @@ pub struct Metadata {
 /// https://docs.opensea.io/docs/metadata-standards and are the metadata fields that
 /// Stashh uses for robust NFT display.  Urls should be prefixed with `http://`, `https://`, `ipfs://`, or
 /// `ar://`
-#[derive(Serialize, Deserialize, JsonSchema, Clone, PartialEq, Debug, Default)]
+#[derive(Serialize, Deserialize, JsonSchema, Clone, PartialEq, Debug)]
 pub struct Extension {
     /// url to the image
     pub image: Option<String>,
@@ -60,10 +62,12 @@ pub struct Extension {
     pub external_url: Option<String>,
     /// item description
     pub description: Option<String>,
+    /// dice experience level
+    pub xp: u32,
     /// name of the item
     pub name: Option<String>,
     /// item attributes
-    pub attributes: Option<Vec<Trait>>,
+    pub attributes: Vec<Trait>,
     /// background color represented as a six-character hexadecimal without a pre-pended #
     pub background_color: Option<String>,
     /// url to a multimedia attachment
@@ -113,4 +117,51 @@ pub struct Authentication {
     pub key: Option<String>,
     /// username used in basic authentication
     pub user: Option<String>,
+}
+
+/// colours
+#[derive(Serialize, Deserialize, JsonSchema, Clone, PartialEq, Debug, Default)]
+pub struct Colour([u8; 3]);
+
+impl Colour {
+    pub fn new() -> Self {
+        let mut rng = rand::thread_rng();
+        let h: [u8; 3] = rng.gen();
+        Colour(h)
+    }
+}
+
+impl Trait {
+    pub fn new_dice_colour() -> Self {
+        let colour = Colour::new().0.encode_hex::<String>();
+        Trait {
+            display_type: None,
+            trait_type: None,
+            value: colour,
+            max_value: None,
+        }
+    }
+}
+
+impl Default for Extension {
+    fn default() -> Self {
+        let mut new_dice_traits = Vec::new();
+        for _ in 0..3 {
+            new_dice_traits.push(Trait::new_dice_colour());
+        }
+        Extension {
+            image: None,
+            image_data: None,
+            external_url: None,
+            description: Some("A dice set for web3 gaming".into()),
+            xp: 0,
+            name: Some("Poker Joke Dice".into()),
+            attributes: new_dice_traits,
+            background_color: Some(Colour::new().0.encode_hex()),
+            animation_url: None,
+            youtube_url: None,
+            media: None,
+            protected_attributes: None,
+        }
+    }
 }

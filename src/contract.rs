@@ -34,7 +34,7 @@ use crate::state::{
     PREFIX_PUB_META, PREFIX_RECEIVERS, PREFIX_REVOKED_PERMITS, PREFIX_ROYALTY_INFO,
     PREFIX_UNFILLED_COLLATERAL, PREFIX_VIEW_KEY, PRNG_SEED_KEY,
 };
-use crate::token::{CollateralInfo, Metadata, Token};
+use crate::token::{CollateralInfo, Extension, Metadata, Token};
 use crate::viewing_key::{ViewingKey, VIEWING_KEY_SIZE};
 
 /// pad handle responses and log attributes to blocks of 256 bytes to prevent leaking info based on
@@ -143,6 +143,17 @@ pub fn handle<S: Storage, A: Api, Q: Querier>(
     let mut config: Config = load(&deps.storage, CONFIG_KEY)?;
 
     let response = match msg {
+        HandleMsg::MintDiceNft {
+            owner,
+            private_metadata,
+        } => mint_dice(
+            deps,
+            env,
+            &mut config,
+            ContractStatus::Normal.to_u8(),
+            owner,
+            private_metadata,
+        ),
         HandleMsg::MintNft {
             token_id,
             owner,
@@ -465,7 +476,7 @@ pub fn handle<S: Storage, A: Api, Q: Querier>(
             ContractStatus::Normal.to_u8(),
             token_id,
         ),
-        HandleMsg::UnCollateralise { token_id } => uncollateralise(
+        HandleMsg::Uncollateralise { token_id } => uncollateralise(
             deps,
             env,
             &mut config,
@@ -644,6 +655,49 @@ pub fn uncollateralise<S: Storage, A: Api, Q: Querier>(
         log: vec![],
         data: Some(to_binary(&HandleAnswer::Uncollateralised {
             status: Success,
+        })?),
+    })
+}
+
+/// Mint default dice without providing metadata
+/// This is used by PJ DAO, we have private_metadata here to test our
+pub fn mint_dice<S: Storage, A: Api, Q: Querier>(
+    deps: &mut Extern<S, A, Q>,
+    env: Env,
+    config: &mut Config,
+    priority: u8,
+    owner: Option<HumanAddr>,
+    private_metadata: Option<Metadata>,
+) -> HandleResult {
+    check_status(config.status, priority)?;
+    let sender_raw = deps.api.canonical_address(&env.message.sender)?;
+    let minters: Vec<CanonicalAddr> =
+        may_load(&deps.storage, MINTERS_KEY)?.unwrap_or_else(Vec::new);
+    if !minters.contains(&sender_raw) {
+        return Err(StdError::generic_err(
+            "Only designated minters are allowed to mint",
+        ));
+    }
+    let extension = Extension::default();
+    let mut mints = vec![Mint {
+        token_id: None,
+        owner,
+        public_metadata: Some(Metadata {
+            token_uri: None,
+            extension: Some(extension),
+        }),
+        private_metadata,
+        royalty_info: None,
+        memo: None,
+        serial_number: None,
+    }];
+    let mut minted = mint_list(deps, &env, config, &sender_raw, &mut mints)?;
+    let minted_str = minted.pop().unwrap_or_else(String::new);
+    Ok(HandleResponse {
+        messages: vec![],
+        log: vec![log("minted", &minted_str)],
+        data: Some(to_binary(&HandleAnswer::MintNft {
+            token_id: minted_str,
         })?),
     })
 }

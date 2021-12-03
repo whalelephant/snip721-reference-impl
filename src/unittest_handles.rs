@@ -393,6 +393,73 @@ mod tests {
         assert!(error.contains("Token ID NFT2 is already in use"));
     }
 
+    // test mint dice
+    #[test]
+    fn test_mint_dice() {
+        // sanity check
+        let (init_result, mut deps) = init_helper_default();
+        assert!(
+            init_result.is_ok(),
+            "Init failed: {}",
+            init_result.err().unwrap()
+        );
+        let handle_msg = HandleMsg::MintDiceNft {
+            owner: Some(HumanAddr("alice".to_string())),
+            private_metadata: None,
+        };
+        let handle_result = handle(&mut deps, mock_env("admin", &[]), handle_msg);
+        let minted = extract_log(handle_result);
+        println!("minted {}", minted);
+        assert!(minted.contains("0"));
+        // verify the token is in the id and index maps
+        let map2idx = ReadonlyPrefixedStorage::new(PREFIX_MAP_TO_INDEX, &deps.storage);
+        let index: u32 = load(&map2idx, "0".to_string().as_bytes()).unwrap();
+        let token_key = index.to_le_bytes();
+        let map2id = ReadonlyPrefixedStorage::new(PREFIX_MAP_TO_ID, &deps.storage);
+        let id: String = load(&map2id, &token_key).unwrap();
+        assert_eq!("0".to_string(), id);
+
+        // verify all the token info
+        let info_store = ReadonlyPrefixedStorage::new(PREFIX_INFOS, &deps.storage);
+        let token: Token = json_load(&info_store, &token_key).unwrap();
+        let alice_raw = deps
+            .api
+            .canonical_address(&HumanAddr("alice".to_string()))
+            .unwrap();
+        let admin_raw = deps
+            .api
+            .canonical_address(&HumanAddr("admin".to_string()))
+            .unwrap();
+        assert_eq!(token.owner, alice_raw);
+        assert_eq!(token.permissions, Vec::new());
+        assert!(token.unwrapped);
+        // verify the token metadata
+        let pub_store = ReadonlyPrefixedStorage::new(PREFIX_PUB_META, &deps.storage);
+        let pub_meta: Metadata = load(&pub_store, &token_key).unwrap();
+        let extension = pub_meta.extension.as_ref().unwrap();
+
+        assert_eq!(extension.xp, 0);
+        assert_eq!(extension.attributes.len(), 3);
+        assert_eq!(extension.attributes[0].value.len(), 6);
+        assert_eq!(extension.background_color.as_ref().unwrap().len(), 6);
+        // verify token is in owner list
+        assert!(Inventory::owns(&deps.storage, &alice_raw, 0).unwrap());
+        // verify mint tx was logged to both parties
+        let (txs, total) = get_txs(&deps.api, &deps.storage, &alice_raw, 0, 1).unwrap();
+        assert_eq!(total, 1);
+        assert_eq!(txs.len(), 1);
+        assert_eq!(txs[0].token_id, "0".to_string());
+        assert_eq!(
+            txs[0].action,
+            TxAction::Mint {
+                minter: HumanAddr("admin".to_string()),
+                recipient: HumanAddr("alice".to_string()),
+            }
+        );
+        let (tx2, total) = get_txs(&deps.api, &deps.storage, &admin_raw, 0, 1).unwrap();
+        assert_eq!(total, 1);
+        assert_eq!(txs, tx2);
+    }
     // test minting
     #[test]
     fn test_mint() {
