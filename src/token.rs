@@ -1,5 +1,5 @@
+use crate::rand::Prng;
 use hex::ToHex;
-use rand::Rng;
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
@@ -121,13 +121,13 @@ pub struct Authentication {
 
 /// colours
 #[derive(Serialize, Deserialize, JsonSchema, Clone, PartialEq, Debug, Default)]
-pub struct Colour([u8; 3]);
+pub struct Colour(Vec<u8>);
 
 impl Colour {
     pub fn new() -> Self {
-        let mut rng = rand::thread_rng();
-        let h: [u8; 3] = rng.gen();
-        Colour(h)
+        let mut p = Prng::new(&[12], &[1, 2, 33]);
+        let rand_colour = &p.rand_bytes()[0..3];
+        Colour(rand_colour.to_vec())
     }
 }
 
