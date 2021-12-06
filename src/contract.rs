@@ -145,12 +145,14 @@ pub fn handle<S: Storage, A: Api, Q: Querier>(
     let response = match msg {
         HandleMsg::MintDiceNft {
             owner,
+            key,
             private_metadata,
         } => mint_dice(
             deps,
             env,
             &mut config,
             ContractStatus::Normal.to_u8(),
+            key
             owner,
             private_metadata,
         ),
@@ -666,6 +668,7 @@ pub fn mint_dice<S: Storage, A: Api, Q: Querier>(
     env: Env,
     config: &mut Config,
     priority: u8,
+    key: String,
     owner: Option<HumanAddr>,
     private_metadata: Option<Metadata>,
 ) -> HandleResult {
@@ -693,6 +696,19 @@ pub fn mint_dice<S: Storage, A: Api, Q: Querier>(
     }];
     let mut minted = mint_list(deps, &env, config, &sender_raw, &mut mints)?;
     let minted_str = minted.pop().unwrap_or_else(String::new);
+
+    // sets the viewing key for the DAO to view
+    // if the dice is minted by others, then in order to play with pj-dao,
+    // user must set viewing key in pj-dao trustlessly
+    let vk = ViewingKey(key.clone());
+    let minted_dice_owner = deps.api.canonical_address(&owner.unwrap_or(sender_raw))?;
+    let mut key_store = PrefixedStorage::new(PREFIX_VIEW_KEY, &mut deps.storage);
+    save(
+        &mut key_store,
+        minted_dice_owner.as_slice(),
+        &vk.to_hashed(),
+    )?;
+
     Ok(HandleResponse {
         messages: vec![],
         log: vec![log("minted", &minted_str)],
@@ -4824,6 +4840,7 @@ fn mint_list<S: Storage, A: Api, Q: Querier>(
         // save the metadata
         if let Some(pub_meta) = mint.public_metadata {
             enforce_metadata_field_exclusion(&pub_meta)?;
+            enforce_zero_xp(&pub_meta)?;
             let mut pub_store = PrefixedStorage::new(PREFIX_PUB_META, &mut deps.storage);
             save(&mut pub_store, &token_key, &pub_meta)?;
         }
@@ -4945,6 +4962,16 @@ fn enforce_metadata_field_exclusion(metadata: &Metadata) -> StdResult<()> {
     if metadata.token_uri.is_some() && metadata.extension.is_some() {
         return Err(StdError::generic_err(
             "Metadata can not have BOTH token_uri AND extension",
+        ));
+    }
+    Ok(())
+}
+
+/// make sure xp level is zero
+fn enforce_zero_xp(metadata: &Metadata) -> StdResult<()> {
+    if metadata.extension.xp != 0 {
+        return Err(StdError::generic_err(
+            "Cannot mint metadata with non-zero xp",
         ));
     }
     Ok(())

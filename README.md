@@ -7,6 +7,7 @@ Added features:
 - Collateralisation
 - Specific Poker Joker Game metadata
 - on chain randomness generation of some metadata
+- default allow PJ DAO contract to view ownership data for dice minted by the dao
 
 ## Metadata
 
