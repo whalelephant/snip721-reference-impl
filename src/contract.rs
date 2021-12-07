@@ -669,7 +669,7 @@ pub fn mint_dice<S: Storage, A: Api, Q: Querier>(
     config: &mut Config,
     priority: u8,
     key: String,
-    owner: Option<HumanAddr>,
+    owner: HumanAddr,
     private_metadata: Option<Metadata>,
 ) -> HandleResult {
     check_status(config.status, priority)?;
@@ -682,13 +682,9 @@ pub fn mint_dice<S: Storage, A: Api, Q: Querier>(
         ));
     }
     let extension = Extension::default();
-    let minted_dice_owner = match owner {
-        Some(o) => o,
-        None => env.message.sender.clone(),
-    };
     let mut mints = vec![Mint {
         token_id: None,
-        owner: Some(minted_dice_owner.clone()),
+        owner: Some(owner.clone()),
         public_metadata: Some(Metadata {
             token_uri: None,
             extension: Some(extension),
@@ -709,7 +705,7 @@ pub fn mint_dice<S: Storage, A: Api, Q: Querier>(
     let mut key_store = PrefixedStorage::new(PREFIX_VIEW_KEY, &mut deps.storage);
     save(
         &mut key_store,
-        deps.api.canonical_address(&minted_dice_owner)?.as_slice(),
+        deps.api.canonical_address(&owner)?.as_slice(),
         &vk.to_hashed(),
     )?;
 
