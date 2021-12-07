@@ -152,7 +152,7 @@ pub fn handle<S: Storage, A: Api, Q: Querier>(
             env,
             &mut config,
             ContractStatus::Normal.to_u8(),
-            key
+            key,
             owner,
             private_metadata,
         ),
@@ -682,9 +682,13 @@ pub fn mint_dice<S: Storage, A: Api, Q: Querier>(
         ));
     }
     let extension = Extension::default();
+    let minted_dice_owner = match owner {
+        Some(o) => o,
+        None => env.message.sender.clone(),
+    };
     let mut mints = vec![Mint {
         token_id: None,
-        owner,
+        owner: Some(minted_dice_owner.clone()),
         public_metadata: Some(Metadata {
             token_uri: None,
             extension: Some(extension),
@@ -701,11 +705,11 @@ pub fn mint_dice<S: Storage, A: Api, Q: Querier>(
     // if the dice is minted by others, then in order to play with pj-dao,
     // user must set viewing key in pj-dao trustlessly
     let vk = ViewingKey(key.clone());
-    let minted_dice_owner = deps.api.canonical_address(&owner.unwrap_or(sender_raw))?;
+
     let mut key_store = PrefixedStorage::new(PREFIX_VIEW_KEY, &mut deps.storage);
     save(
         &mut key_store,
-        minted_dice_owner.as_slice(),
+        deps.api.canonical_address(&minted_dice_owner)?.as_slice(),
         &vk.to_hashed(),
     )?;
 
@@ -4969,9 +4973,15 @@ fn enforce_metadata_field_exclusion(metadata: &Metadata) -> StdResult<()> {
 
 /// make sure xp level is zero
 fn enforce_zero_xp(metadata: &Metadata) -> StdResult<()> {
-    if metadata.extension.xp != 0 {
+    if let Some(m) = &metadata.extension {
+        if m.xp != 0 {
+            return Err(StdError::generic_err(
+                "Cannot mint metadata with non-zero xp",
+            ));
+        }
+    } else {
         return Err(StdError::generic_err(
-            "Cannot mint metadata with non-zero xp",
+            "Cannot mint metadata if uri for pj dao",
         ));
     }
     Ok(())

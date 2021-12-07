@@ -2372,8 +2372,8 @@ mod tests {
         }
         let alice = HumanAddr("alice".to_string());
         let public_meta = Metadata {
-            token_uri: Some("uri".to_string()),
-            extension: None,
+            token_uri: None,
+            extension: Some(Extension::default()),
         };
         let handle_msg = HandleMsg::MintNft {
             token_id: Some("NFT1".to_string()),

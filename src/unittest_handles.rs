@@ -405,6 +405,7 @@ mod tests {
         );
         let handle_msg = HandleMsg::MintDiceNft {
             owner: Some(HumanAddr("alice".to_string())),
+            key: "test-string".to_owned(),
             private_metadata: None,
         };
         let handle_result = handle(&mut deps, mock_env("admin", &[]), handle_msg);
