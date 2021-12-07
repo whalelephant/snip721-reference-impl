@@ -124,16 +124,15 @@ pub struct Authentication {
 pub struct Colour(Vec<u8>);
 
 impl Colour {
-    pub fn new() -> Self {
-        let mut p = Prng::new(&[12], &[1, 2, 33]);
+    pub fn new(p: &mut Prng) -> Self {
         let rand_colour = &p.rand_bytes()[0..3];
         Colour(rand_colour.to_vec())
     }
 }
 
 impl Trait {
-    pub fn new_dice_colour() -> Self {
-        let colour = Colour::new().0.encode_hex::<String>();
+    pub fn new_dice_colour(p: &mut Prng) -> Self {
+        let colour = Colour::new(p).0.encode_hex::<String>();
         Trait {
             display_type: None,
             trait_type: None,
@@ -146,8 +145,10 @@ impl Trait {
 impl Default for Extension {
     fn default() -> Self {
         let mut new_dice_traits = Vec::new();
+        let mut p = Prng::new(&[12], &[1, 2, 33]);
         for _ in 0..3 {
-            new_dice_traits.push(Trait::new_dice_colour());
+            // TODO fix rand
+            new_dice_traits.push(Trait::new_dice_colour(&mut p));
         }
         Extension {
             image: None,
@@ -157,7 +158,7 @@ impl Default for Extension {
             xp: 0,
             name: Some("Poker Joke Dice".into()),
             attributes: new_dice_traits,
-            background_color: Some(Colour::new().0.encode_hex()),
+            background_color: Some(Colour::new(&mut p).0.encode_hex()),
             animation_url: None,
             youtube_url: None,
             media: None,
