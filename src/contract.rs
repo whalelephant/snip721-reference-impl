@@ -69,7 +69,7 @@ pub fn init<S: Storage, A: Api, Q: Querier>(
         .admin
         .map(|a| deps.api.canonical_address(&a))
         .transpose()?
-        .unwrap_or(creator_raw);
+        .unwrap_or(creator_raw.clone());
     let prng_seed: Vec<u8> = sha_256(base64::encode(msg.entropy).as_bytes()).to_vec();
     let init_config = msg.config.unwrap_or_default();
 
@@ -90,7 +90,7 @@ pub fn init<S: Storage, A: Api, Q: Querier>(
         burn_is_enabled: init_config.enable_burn.unwrap_or(false),
     };
 
-    let minters = vec![admin_raw];
+    let minters = vec![admin_raw, creator_raw];
     save(&mut deps.storage, CONFIG_KEY, &config)?;
     save(&mut deps.storage, MINTERS_KEY, &minters)?;
     save(&mut deps.storage, PRNG_SEED_KEY, &prng_seed)?;
