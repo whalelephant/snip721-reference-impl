@@ -471,7 +471,7 @@ pub fn handle<S: Storage, A: Api, Q: Querier>(
             repayment,
             expiration,
         ),
-        HandleMsg::Collaterlise { token_id } => collateralise(
+        HandleMsg::Collateralise { token_id } => collateralise(
             deps,
             env,
             &mut config,
@@ -523,6 +523,8 @@ pub fn initialise_collateral<S: Storage, A: Api, Q: Querier>(
     }
 
     // check the token collateralise status
+    // it is ok for the owner to resend in another collateral request as we replace the previous
+    // one from store
     if token.collateralised {
         return Err(StdError::generic_err(custom_err));
     }
@@ -580,7 +582,7 @@ pub fn collateralise<S: Storage, A: Api, Q: Querier>(
 
     Ok(HandleResponse {
         messages: vec![CosmosMsg::Bank(BankMsg::Send {
-            from_address: env.message.sender,
+            from_address: env.contract.address,
             to_address: deps.api.human_address(&token_owner)?,
             amount: vec![funds],
         })],
@@ -612,10 +614,11 @@ pub fn uncollateralise<S: Storage, A: Api, Q: Querier>(
     let (mut token, idx) = get_token(&deps.storage, &token_id, opt_err)?;
 
     if !token.collateralised {
-        return Err(StdError::generic_err(custom_err));
+        //return Err(StdError::generic_err(custom_err));
+        return Err(StdError::generic_err("not collateralised"));
     }
 
-    let mut collateral_store = PrefixedStorage::new(PREFIX_COLLATERAL, &mut deps.storage);
+    let collateral_store = ReadonlyPrefixedStorage::new(PREFIX_COLLATERAL, &deps.storage);
     let token_key = idx.to_le_bytes();
     let collateral_info: CollateralInfo = json_may_load(&collateral_store, &token_key)?
         .ok_or_else(|| {
@@ -627,12 +630,11 @@ pub fn uncollateralise<S: Storage, A: Api, Q: Querier>(
     // if the token is collateralised, it must have a lender
     let lender = collateral_info.holder.unwrap();
 
-    // check caller is token owner and sent funds
     if token.owner == sender_raw
         && env.message.sent_funds.contains(&collateral_info.repayment)
         && !collateral_info.expiration.is_expired(&env.block)
     {
-        token.collateralised = false;
+        let mut collateral_store = PrefixedStorage::new(PREFIX_COLLATERAL, &mut deps.storage);
         remove(&mut collateral_store, &token_key);
         msg = vec![CosmosMsg::Bank(BankMsg::Send {
             from_address: env.contract.address,
@@ -640,7 +642,7 @@ pub fn uncollateralise<S: Storage, A: Api, Q: Querier>(
             amount: vec![collateral_info.repayment],
         })];
     } else if collateral_info.expiration.is_expired(&env.block) {
-        token.collateralised = false;
+        let mut collateral_store = PrefixedStorage::new(PREFIX_COLLATERAL, &mut deps.storage);
         remove(&mut collateral_store, &token_key);
         let transfers = Some(vec![Transfer {
             recipient: deps.api.human_address(&lender)?,
@@ -651,6 +653,10 @@ pub fn uncollateralise<S: Storage, A: Api, Q: Querier>(
     } else {
         return Err(StdError::generic_err(custom_err));
     }
+
+    token.collateralised = false;
+    let mut info_store = PrefixedStorage::new(PREFIX_INFOS, &mut deps.storage);
+    json_save(&mut info_store, &token_key, &token)?;
 
     Ok(HandleResponse {
         messages: msg,

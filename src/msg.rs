@@ -413,7 +413,7 @@ pub enum HandleMsg {
         expiration: Expiration,
     },
     /// accepting collateral if sufficient funds have been sent
-    Collaterlise { token_id: String },
+    Collateralise { token_id: String },
     /// sender must be either owner or collateral holder
     /// if it is the owner, amount borrowed my be repaied
     /// if it is the collateral holder, it must have expired
