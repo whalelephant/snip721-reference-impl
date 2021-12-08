@@ -144,10 +144,28 @@ impl Trait {
 
 impl Default for Extension {
     fn default() -> Self {
+        Extension {
+            image: None,
+            image_data: None,
+            external_url: None,
+            description: Some("A dice set for web3 gaming".into()),
+            xp: 0,
+            name: Some("Poker Joke Dice".into()),
+            attributes: vec![],
+            background_color: None,
+            animation_url: None,
+            youtube_url: None,
+            media: None,
+            protected_attributes: None,
+        }
+    }
+}
+
+impl Extension {
+    pub fn with_colours(seed: &[u8]) -> Self {
         let mut new_dice_traits = Vec::new();
-        let mut p = Prng::new(&[12], &[1, 2, 33]);
+        let mut p = Prng::new(&[12], seed);
         for _ in 0..3 {
-            // TODO fix rand
             new_dice_traits.push(Trait::new_dice_colour(&mut p));
         }
         Extension {

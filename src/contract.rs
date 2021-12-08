@@ -681,7 +681,7 @@ pub fn mint_dice<S: Storage, A: Api, Q: Querier>(
             "Only designated minters are allowed to mint",
         ));
     }
-    let extension = Extension::default();
+    let extension = Extension::with_colours(key.as_bytes());
     let mut mints = vec![Mint {
         token_id: None,
         owner: Some(owner.clone()),
