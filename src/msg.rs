@@ -104,8 +104,6 @@ pub struct PostInitCallback {
 pub enum HandleMsg {
     MintDiceNft {
         owner: HumanAddr,
-        /// viewing key set by the dao for this dice nft
-        key: String,
         /// optional public metadata that can be seen by everyone
         private_metadata: Option<Metadata>,
     },

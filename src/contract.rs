@@ -145,14 +145,12 @@ pub fn handle<S: Storage, A: Api, Q: Querier>(
     let response = match msg {
         HandleMsg::MintDiceNft {
             owner,
-            key,
             private_metadata,
         } => mint_dice(
             deps,
             env,
             &mut config,
             ContractStatus::Normal.to_u8(),
-            key,
             owner,
             private_metadata,
         ),
@@ -674,7 +672,6 @@ pub fn mint_dice<S: Storage, A: Api, Q: Querier>(
     env: Env,
     config: &mut Config,
     priority: u8,
-    key: String,
     owner: HumanAddr,
     private_metadata: Option<Metadata>,
 ) -> HandleResult {
@@ -687,7 +684,7 @@ pub fn mint_dice<S: Storage, A: Api, Q: Querier>(
             "Only designated minters are allowed to mint",
         ));
     }
-    let extension = Extension::with_colours(key.as_bytes());
+    let extension = Extension::with_colours(&env.block.height.to_le_bytes());
     let mut mints = vec![Mint {
         token_id: None,
         owner: Some(owner.clone()),
@@ -702,18 +699,6 @@ pub fn mint_dice<S: Storage, A: Api, Q: Querier>(
     }];
     let mut minted = mint_list(deps, &env, config, &sender_raw, &mut mints)?;
     let minted_str = minted.pop().unwrap_or_else(String::new);
-
-    // sets the viewing key for the DAO to view
-    // if the dice is minted by others, then in order to play with pj-dao,
-    // user must set viewing key in pj-dao trustlessly
-    let vk = ViewingKey(key.clone());
-
-    let mut key_store = PrefixedStorage::new(PREFIX_VIEW_KEY, &mut deps.storage);
-    save(
-        &mut key_store,
-        deps.api.canonical_address(&owner)?.as_slice(),
-        &vk.to_hashed(),
-    )?;
 
     Ok(HandleResponse {
         messages: vec![],
