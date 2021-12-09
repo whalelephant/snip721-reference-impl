@@ -1,87 +1,15 @@
 # Poker Joke Dice NFT / DAO ownership
 
-This is a fork of the SNIP-721 Reference Implementation
+This is a fork of the SNIP-721 Reference Implementation.
 
-Added features:
+## Added features:
 
-- Collateralisation
-- Specific Poker Joker Game metadata
-- on chain randomness generation of some metadata
-- default allow PJ DAO contract to view ownership data for dice minted by the dao
-
-## Metadata
-
-Mint/ batch mint / mint_clones all use mint_list
-
-```rust
-/// token metadata
-#[derive(Serialize, Deserialize, JsonSchema, Clone, PartialEq, Debug, Default)]
-pub struct Metadata {
-    /// optional uri for off-chain metadata.  This should be prefixed with `http://`, `https://`, `ipfs://`, or
-    /// `ar://`.  Only use this if you are not using `extension`
-    pub token_uri: Option<String>,
-    /// optional on-chain metadata.  Only use this if you are not using `token_uri`
-    pub extension: Option<Extension>,
-}
-
-#[derive(Serialize, Deserialize, JsonSchema, Clone, PartialEq, Debug, Default)]
-pub struct Extension {
-    /// url to the image
-    pub image: Option<String>,
-    /// raw SVG image data (not recommended). Only use this if you're not including the image parameter
-    pub image_data: Option<String>,
-    /// url to allow users to view the item on your site
-    pub external_url: Option<String>,
-    /// item description
-    pub description: Option<String>,
-    /// name of the item
-    pub name: Option<String>,
-    /// item attributes
-    pub attributes: Option<Vec<Trait>>,
-    /// background color represented as a six-character hexadecimal without a pre-pended #
-    pub background_color: Option<String>,
-    /// url to a multimedia attachment
-    pub animation_url: Option<String>,
-    /// url to a YouTube video
-    pub youtube_url: Option<String>,
-    /// media files as specified on Stashh that allows for basic authenticatiion and decryption keys.
-    /// Most of the above is used for bridging public eth NFT metadata easily, whereas `media` will be used
-    /// when minting NFTs on Stashh
-    pub media: Option<Vec<MediaFile>>,
-    /// a select list of trait_types that are in the private metadata.  This will only ever be used
-    /// in public metadata
-    pub protected_attributes: Option<Vec<String>>,
-}
-
-/// attribute trait
-#[derive(Serialize, Deserialize, JsonSchema, Clone, PartialEq, Debug, Default)]
-pub struct Trait {
-    /// indicates how a trait should be displayed
-    pub display_type: Option<String>,
-    /// name of the trait
-    pub trait_type: Option<String>,
-    /// trait value
-    pub value: String,
-    /// optional max value for numerical traits
-    pub max_value: Option<String>,
-}
-```
-
-## Collateralisation:
-
-Token Owner can initiate a collateralisation of their NFT for a given period by setting the price and the expiration.
-If the Token Owner repays the borrowed amount before expiration, they will have full ownership.
-After the expiration date, the collateral holder can then transfer the token to themselves.
-During the time of collateral, it is not possible to
-
-<!---
-  token_id can be anything, the mint_cnt is the index, of how many are mint but since they can be burnt,
-  the token_cnt is the total existing token
---->
-
-- transfer
-- send
-- burn
+- Collateralisation (can be used with the js-cli)
+  - InitCollateral: Done by the owner setting the price, repayment price and expiration date
+  - Collateralise: Someone taking this collateral off the market and can transfer it to themselves after expriation date
+  - UnCollateralise: Either the token owner or the collateral holder calls this to make repayment or transfer toke (post expiration)
+- Specific Poker Joker Game metadata (xp and colour generation)
+- on chain randomness generation of some metadata (using entryopy from block time)
 
 ---
 
